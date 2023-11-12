@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Windows.Forms;
 using static HandheldCompanion.Utils.XInputPlusUtils;
 
 namespace HandheldCompanion.Managers;
@@ -15,6 +16,7 @@ namespace HandheldCompanion.Managers;
 public static class ProfileManager
 {
     public const string DefaultName = "Default";
+    public const string DefaultPluggedIn = "PluggedIn";
 
     public static Dictionary<string, Profile> profiles = new(StringComparer.InvariantCultureIgnoreCase);
 
@@ -74,8 +76,33 @@ public static class ProfileManager
             UpdateOrCreateProfile(defaultProfile, ProfileUpdateSource.Creation);
         }
 
+        if (!HasPluggedIn())
+        {
+            Profile pluggedIn = new()
+            {
+                Name = DefaultPluggedIn,
+                Default = false,
+                Enabled = false,
+                Layout = LayoutTemplate.DefaultLayout.Layout.Clone() as Layout,
+                LayoutTitle = LayoutTemplate.DefaultLayout.Name,
+                TDPOverrideValues = MainWindow.CurrentDevice.nTDP,
+                LayoutEnabled = true
+            };
+            UpdateOrCreateProfile(pluggedIn, ProfileUpdateSource.Creation);
+        }
+
         // force apply default
-        ApplyProfile(GetDefault());
+
+        
+
+        if (IsPluggedIn())
+        {
+            ApplyProfile(GetPluggedIn());
+        }
+        else
+        {
+            ApplyProfile(GetDefault());
+        }
 
         IsInitialized = true;
         Initialized?.Invoke();
@@ -181,7 +208,15 @@ public static class ProfileManager
                 UpdateOrCreateProfile(profile);
 
                 // restore default profile
-                ApplyProfile(GetDefault());
+                if (IsPluggedIn())
+                {
+                    ApplyProfile(GetPluggedIn());
+                }
+                else
+                {
+                    ApplyProfile(GetDefault());
+                }
+
             }
         }
         catch
@@ -231,7 +266,15 @@ public static class ProfileManager
                     Discarded?.Invoke(backProfile);
             }
 
-            ApplyProfile(profile);
+            if (IsPluggedIn())
+            {
+                ApplyProfile(GetPluggedIn());
+            }
+            else
+            {
+                ApplyProfile(profile);
+            }
+
         }
         catch
         {
@@ -261,6 +304,42 @@ public static class ProfileManager
     private static bool HasDefault()
     {
         return profiles.Values.Count(a => a.Default) != 0;
+    }
+
+    private static bool HasPluggedIn()
+    {
+        var foundProfile = profiles.Values.FirstOrDefault(p => p.Name.Equals("PluggedIn", StringComparison.InvariantCultureIgnoreCase));
+
+
+        if (foundProfile is null)
+        {
+            return false;
+        }
+
+        if (foundProfile.Default)
+        {
+            return false;
+        }
+
+        LogManager.LogInformation(foundProfile.Name);
+
+        return true;
+    }
+
+    public static Profile GetPluggedIn()
+    {
+        if (HasPluggedIn())
+            return profiles.Values.FirstOrDefault(p => p.Name.Equals("PluggedIn", StringComparison.InvariantCultureIgnoreCase));
+        return new Profile();
+    }
+
+    public static bool IsPluggedIn()
+    {
+        var currPowerLineStatus = SystemInformation.PowerStatus.PowerLineStatus;
+        if (currPowerLineStatus.Equals(PowerLineStatus.Online)) {
+            return true;
+        }
+        return false;
     }
 
     public static Profile GetDefault()
@@ -366,7 +445,15 @@ public static class ProfileManager
 
             // restore default profile
             if (isCurrent)
-                ApplyProfile(GetDefault());
+                if (IsPluggedIn())
+                {
+                    ApplyProfile(GetPluggedIn());
+                }
+                else
+                {
+                    ApplyProfile(GetDefault());
+                }
+
         }
 
         FileUtils.FileDelete(profilePath);
